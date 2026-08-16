@@ -116,8 +116,12 @@ pub mod relay_members {
     /// its NIP-OA owner *is* — access is granted via delegation.
     ///
     /// On open relays (`require_relay_membership = false`), returns `Ok(None)`
-    /// immediately — no membership check is performed. Callers that need NIP-OA
-    /// owner extraction on open relays should call [`extract_nip_oa_owner`] directly.
+    /// immediately — no membership check is performed.
+    ///
+    /// This reports an owner only when the delegation was USED to admit the
+    /// agent. Callers that want the owner relationship itself — for the
+    /// agent→owner backfill, say — must call [`extract_nip_oa_owner`], which is
+    /// independent of how membership was satisfied.
     ///
     /// Returns `Ok(None)` when the caller is a direct member (closed relay) or when
     /// no NIP-OA tag is present/applicable (open relay without auth tag).

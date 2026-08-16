@@ -2,9 +2,11 @@
 //!
 //! Relay membership enforcement uses the shared
 //! [`crate::api::relay_members::enforce_relay_membership`] helper, which supports
-//! NIP-OA owner-delegation fallback on closed relays. On open relays, the auth
-//! handler calls [`crate::api::relay_members::extract_nip_oa_owner`] directly to
-//! extract the owner pubkey for agent→owner backfill (observer frame auth).
+//! NIP-OA owner-delegation fallback on closed relays. Separately, the auth
+//! handler calls [`crate::api::relay_members::extract_nip_oa_owner`] whenever an
+//! `auth` tag is present, so the agent→owner backfill also covers agents that
+//! are direct relay members — for those, enforce_relay_membership reports no
+//! owner because it did not need the delegation to admit them.
 //!
 //! For WebSocket auth, the NIP-OA `auth` tag is extracted from the signed AUTH
 //! event itself (the tag is integrity-protected by the event signature).
@@ -237,12 +239,27 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
                 }
             };
 
-            // Open relay NIP-OA backfill: extract owner for agent→owner DB mapping
-            // (needed for observer frame auth). Only runs on open relays — on closed
-            // relays, enforce_relay_membership already handles NIP-OA delegation.
-            // No feature flag needed: NIP-OA is cryptographically self-proving.
+            // NIP-OA backfill: extract owner for the agent→owner DB mapping.
+            //
+            // Runs whenever an auth tag is present, regardless of how membership
+            // was satisfied. enforce_relay_membership only reports an owner when
+            // it USED the delegation to admit the agent (MembershipDecision::
+            // ViaOwner); an agent that is also a direct relay member takes the
+            // ::Member branch, which returns Ok(None) and discards a perfectly
+            // valid attestation.
+            //
+            // That left agent_owner_pubkey NULL for every directly-enrolled
+            // agent on a closed relay, which is not cosmetic: is_agent is
+            // derived from that column, so such agents were rate-limited as
+            // humans, were absent from owner-managed agent lists, and could not
+            // be added to a channel under their own channel_add_policy of
+            // "owner_only" — the policy had no owner to compare against, so it
+            // refused everyone including the real owner.
+            //
+            // No feature flag needed: NIP-OA is cryptographically self-proving,
+            // so extracting it is safe wherever the tag verifies.
             let nip_oa_owner = nip_oa_owner.or_else(|| {
-                if !state.config.require_relay_membership && auth_tag_json.is_some() {
+                if auth_tag_json.is_some() {
                     crate::api::relay_members::extract_nip_oa_owner(
                         pubkey.as_bytes(),
                         auth_tag_json.as_deref(),
@@ -298,6 +315,63 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
 mod tests {
     use super::extract_auth_tag_json;
     use nostr::{EventBuilder, Keys, Kind, Tag};
+
+    /// A valid attestation must yield its owner regardless of how the agent's
+    /// relay membership was satisfied.
+    ///
+    /// Regression: the backfill used to run only when
+    /// `require_relay_membership` was false. `enforce_relay_membership` reports
+    /// an owner only when it USED the delegation to admit the agent
+    /// (`MembershipDecision::ViaOwner`); an agent that is also a direct member
+    /// takes the `::Member` branch and gets `Ok(None)`. On a closed relay those
+    /// two facts combined meant a directly-enrolled agent's owner was never
+    /// materialized, leaving `users.agent_owner_pubkey` NULL — which is what
+    /// `is_agent` is derived from, so the agent was rate-limited as a human,
+    /// absent from owner-managed agent lists, and unaddable to channels under
+    /// its own `channel_add_policy = "owner_only"` because that policy had no
+    /// owner to compare against.
+    #[test]
+    fn attestation_yields_owner_independently_of_membership_path() {
+        let owner = Keys::generate();
+        let agent = Keys::generate();
+
+        let tag_json =
+            buzz_sdk::nip_oa::compute_auth_tag(&owner, &agent.public_key(), "").expect("build tag");
+
+        let extracted = crate::api::relay_members::extract_nip_oa_owner(
+            agent.public_key().as_bytes(),
+            Some(tag_json.as_str()),
+        );
+
+        assert_eq!(
+            extracted,
+            Some(owner.public_key()),
+            "a verifying attestation must yield its owner; membership is a separate question"
+        );
+    }
+
+    /// The counterpart: an attestation naming a different agent must not yield
+    /// an owner. Extraction is unconditional now, so its own verification is
+    /// the only thing standing between a forged tag and an owner mapping.
+    #[test]
+    fn attestation_for_another_agent_is_rejected() {
+        let owner = Keys::generate();
+        let agent = Keys::generate();
+        let other_agent = Keys::generate();
+
+        let tag_json = buzz_sdk::nip_oa::compute_auth_tag(&owner, &other_agent.public_key(), "")
+            .expect("build tag");
+
+        let extracted = crate::api::relay_members::extract_nip_oa_owner(
+            agent.public_key().as_bytes(),
+            Some(tag_json.as_str()),
+        );
+
+        assert_eq!(
+            extracted, None,
+            "an attestation bound to a different agent must not authenticate this one"
+        );
+    }
 
     /// Build a signed NIP-98 (kind 27235) event carrying the given tags. The
     /// `auth` tag lives inside the signed event exactly as the git and
