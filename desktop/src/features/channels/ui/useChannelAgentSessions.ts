@@ -2,7 +2,6 @@ import * as React from "react";
 
 import type { TimelineMessage } from "@/features/messages/types";
 import type {
-  Channel,
   ChannelMember,
   ManagedAgent,
   RelayAgent,
@@ -26,10 +25,8 @@ export type ChannelAgentSessionAgent = Pick<
 };
 
 type UseChannelAgentSessionsOptions = {
-  activeChannel: Channel | null;
   activeChannelId: string | null;
   agentsLoaded: boolean;
-  channelMembers?: ChannelMember[];
   handleOpenThread: (message: TimelineMessage) => void;
   managedAgents: ChannelAgentSessionAgent[];
   openAgentSessionPubkey: string | null;
@@ -37,7 +34,6 @@ type UseChannelAgentSessionsOptions = {
   profilePanelPubkey?: string | null;
   setChannelManagementOpen: (open: boolean) => void;
   setExpandedThreadReplyIds: (value: Set<string>) => void;
-  setOpenAgentSessionChannelId: PanelValueSetter;
   setOpenAgentSessionPubkey: PanelValueSetter;
   setOpenThreadHeadId: (value: string | null) => void;
   setProfilePanelPubkey: (value: string | null) => void;
@@ -106,65 +102,9 @@ export function buildChannelAgentSessionCandidates({
   return [...byPubkey.values()];
 }
 
-export function getChannelAgentSessionAgents({
-  activeChannel,
-  activeChannelId,
-  agents,
-  channelMembers,
-}: {
-  activeChannel: Channel | null;
-  activeChannelId: string | null;
-  agents: ChannelAgentSessionAgent[];
-  channelMembers?: ChannelMember[];
-}): ChannelAgentSessionAgent[] {
-  if (!activeChannelId || !activeChannel) {
-    return [];
-  }
-
-  const memberPubkeys = channelMembers
-    ? new Set(channelMembers.map((member) => normalizePubkey(member.pubkey)))
-    : null;
-  const botMemberPubkeys = channelMembers
-    ? new Set(
-        channelMembers
-          .filter((member) => member.role === "bot")
-          .map((member) => normalizePubkey(member.pubkey)),
-      )
-    : null;
-
-  return agents.filter((agent) => {
-    const normalizedPubkey = normalizePubkey(agent.pubkey);
-    const channelIds = agent.channelIds ?? [];
-    const channels = agent.channels ?? [];
-    const hasDeclaredChannelScope =
-      channelIds.length > 0 || channels.length > 0;
-    const matchesDeclaredChannel =
-      channelIds.includes(activeChannelId) ||
-      channels.includes(activeChannel.name);
-
-    if (agent.agentSource === "member-bot") {
-      return botMemberPubkeys?.has(normalizedPubkey) ?? matchesDeclaredChannel;
-    }
-
-    if (agent.agentSource === "managed") {
-      return memberPubkeys?.has(normalizedPubkey) ?? matchesDeclaredChannel;
-    }
-
-    if (matchesDeclaredChannel) {
-      return true;
-    }
-
-    return (
-      !hasDeclaredChannelScope && Boolean(memberPubkeys?.has(normalizedPubkey))
-    );
-  });
-}
-
 export function useChannelAgentSessions({
-  activeChannel,
   activeChannelId,
   agentsLoaded,
-  channelMembers,
   handleOpenThread,
   managedAgents,
   openAgentSessionPubkey,
@@ -172,23 +112,12 @@ export function useChannelAgentSessions({
   profilePanelPubkey = null,
   setChannelManagementOpen,
   setExpandedThreadReplyIds,
-  setOpenAgentSessionChannelId,
   setOpenAgentSessionPubkey,
   setOpenThreadHeadId,
   setProfilePanelPubkey,
   setThreadReplyTargetId,
   setThreadScrollTargetId,
 }: UseChannelAgentSessionsOptions) {
-  const channelAgentSessionAgents = React.useMemo(
-    () =>
-      getChannelAgentSessionAgents({
-        activeChannel,
-        activeChannelId,
-        agents: managedAgents,
-        channelMembers,
-      }),
-    [activeChannel, activeChannelId, channelMembers, managedAgents],
-  );
   const agentSessionAgents = managedAgents;
 
   // Breadcrumb for the Activity panel back arrow: captured on the
@@ -205,7 +134,7 @@ export function useChannelAgentSessions({
   }, [returnTarget, setOpenAgentSessionPubkey]);
 
   const openAgentSession = React.useCallback(
-    (pubkey: string, channelId?: string | null) => {
+    (pubkey: string) => {
       if (!isAgentSessionOpen) {
         returnTarget.capture(
           resolveAgentSessionReturnTarget({
@@ -220,21 +149,14 @@ export function useChannelAgentSessions({
       setThreadReplyTargetId(null);
       setChannelManagementOpen(false);
       setOpenAgentSessionPubkey(pubkey);
-      // Fall back to activeChannelId so opening from within a channel always
-      // scopes the panel to that channel — even when no explicit channelId is
-      // supplied (e.g. activity-list click). Without this, a null channelId
-      // bypasses scopeByChannel and lets all channels' live frames through.
-      setOpenAgentSessionChannelId(channelId ?? activeChannelId ?? null);
     },
     [
-      activeChannelId,
       isAgentSessionOpen,
       openThreadHeadId,
       profilePanelPubkey,
       returnTarget,
       setChannelManagementOpen,
       setExpandedThreadReplyIds,
-      setOpenAgentSessionChannelId,
       setOpenAgentSessionPubkey,
       setOpenThreadHeadId,
       setThreadReplyTargetId,
@@ -261,16 +183,6 @@ export function useChannelAgentSessions({
     setOpenThreadHeadId,
     setProfilePanelPubkey,
   ]);
-
-  const selectAgentSession = React.useCallback(
-    (pubkey: string, channelId?: string | null) => {
-      setOpenAgentSessionPubkey(pubkey);
-      // Same fallback as openAgentSession: use activeChannelId when the caller
-      // omits channelId, so the panel is always scoped to the current channel.
-      setOpenAgentSessionChannelId(channelId ?? activeChannelId ?? null);
-    },
-    [activeChannelId, setOpenAgentSessionChannelId, setOpenAgentSessionPubkey],
-  );
 
   const openThreadAndCloseAgentSession = React.useCallback(
     (message: TimelineMessage) => {
@@ -320,12 +232,10 @@ export function useChannelAgentSessions({
   return {
     agentSessionAgents,
     backFromAgentSession,
-    channelAgentSessionAgents,
     closeAgentSession,
     hasAgentSessionReturnTarget,
     openAgentSession,
     openAgentSessionPubkey,
     openThreadAndCloseAgentSession,
-    selectAgentSession,
   };
 }

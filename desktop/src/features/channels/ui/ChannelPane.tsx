@@ -139,7 +139,6 @@ export const ChannelPane = React.memo(function ChannelPane({
   ownerProfiles,
   openThreadHeadId,
   shouldShowThreadSkeleton,
-  openAgentSessionChannelId,
   openAgentSessionPubkey,
   onProfilePanelViewChange,
   onProfilePanelTabChange,
@@ -869,32 +868,15 @@ export const ChannelPane = React.memo(function ChannelPane({
           })()
         ) : activeChannel && selectedAgent ? (
           (() => {
-            // When the panel was opened from a different channel than the
-            // currently active one, re-scope it to the active channel so
-            // that both the content/header AND channel-backed actions (e.g.
-            // Stop current turn) operate on the same channel object.
-            const effectiveAgentSessionChannelId =
-              openAgentSessionChannelId &&
-              activeChannel.id !== openAgentSessionChannelId
-                ? activeChannelId
-                : openAgentSessionChannelId;
+            // An activity pane opened inside a channel always belongs to that
+            // channel. A restored URL may carry only the agent identity, so an
+            // absent source hint must not broaden the pane to all channels.
             const panel = (
               <AgentSessionThreadPanel
                 agent={selectedAgent}
                 canInterruptTurn={selectedAgent.canInterruptTurn}
-                channel={
-                  effectiveAgentSessionChannelId
-                    ? effectiveAgentSessionChannelId === activeChannel.id
-                      ? activeChannel
-                      : null
-                    : agentSessionSelection.isAgentInActivityList({
-                          activityAgents,
-                          selectedAgent,
-                        })
-                      ? activeChannel
-                      : null
-                }
-                channelId={effectiveAgentSessionChannelId}
+                channel={activeChannel}
+                channelId={activeChannelId}
                 isSinglePanelView={
                   useSplitAuxiliaryPane ? false : isSinglePanelView
                 }

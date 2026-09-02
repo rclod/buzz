@@ -153,7 +153,6 @@ export type ChannelPaneProps = {
   ownerProfiles?: UserProfileLookup;
   openThreadHeadId: string | null;
   shouldShowThreadSkeleton: boolean;
-  openAgentSessionChannelId: string | null;
   openAgentSessionPubkey: string | null;
   onProfilePanelViewChange: (
     view: ProfilePanelView,

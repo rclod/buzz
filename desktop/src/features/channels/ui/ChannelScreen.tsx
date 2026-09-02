@@ -120,7 +120,6 @@ export function ChannelScreen({
     channelManagementOpen,
     clearAutoSend,
     clearMessageRouteTarget,
-    openAgentSessionChannelId,
     openAgentSessionPubkey,
     openProfilePanel,
     openThreadHeadId,
@@ -128,7 +127,6 @@ export function ChannelScreen({
     profilePanelTab,
     profilePanelView,
     setChannelManagementOpen,
-    setOpenAgentSessionChannelId,
     setOpenAgentSessionPubkey,
     setOpenThreadHeadId,
     setProfilePanelTab,
@@ -341,7 +339,6 @@ export function ChannelScreen({
     humanTypingPubkeys,
     threadTypingPubkeys,
   } = useChannelActivityTyping({
-    activeChannel,
     activeChannelId,
     channelMembers,
     managedAgents,
@@ -556,19 +553,16 @@ export function ChannelScreen({
   const {
     agentSessionAgents,
     backFromAgentSession: handleBackFromAgentSession,
-    channelAgentSessionAgents,
     closeAgentSession: handleCloseAgentSession,
     hasAgentSessionReturnTarget,
     openAgentSession: handleOpenAgentSession,
     openThreadAndCloseAgentSession: handleOpenThreadAndCloseAgentSession,
   } = useChannelAgentSessions({
-    activeChannel,
     activeChannelId,
     agentsLoaded:
       !channelMembersQuery.isLoading &&
       !managedAgentsQuery.isLoading &&
       !relayAgentsQuery.isLoading,
-    channelMembers,
     handleOpenThread,
     managedAgents: agentSessionCandidates,
     openAgentSessionPubkey,
@@ -576,7 +570,6 @@ export function ChannelScreen({
     profilePanelPubkey,
     setChannelManagementOpen,
     setExpandedThreadReplyIds,
-    setOpenAgentSessionChannelId,
     setOpenAgentSessionPubkey,
     setOpenThreadHeadId,
     setProfilePanelPubkey,
@@ -833,7 +826,7 @@ export function ChannelScreen({
               >
                 <ChannelPane
                   activeChannel={activeChannel}
-                  activityAgents={channelAgentSessionAgents}
+                  activityAgents={agentSessionAgents}
                   agentPubkeys={agentPubkeys}
                   agentPubkeysPending={agentPubkeysPending}
                   agentSessionAgents={agentSessionAgents}
@@ -928,7 +921,6 @@ export function ChannelScreen({
                   onThreadPanelResizeStart={handleThreadPanelResizeStart}
                   onTargetReached={handleTargetReached}
                   onToggleReaction={effectiveToggleReaction}
-                  openAgentSessionChannelId={openAgentSessionChannelId}
                   openAgentSessionPubkey={openAgentSessionPubkey}
                   openThreadHeadId={effectiveOpenThreadHeadId}
                   shouldShowThreadSkeleton={shouldShowThreadSkeleton}

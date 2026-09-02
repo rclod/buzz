@@ -7,6 +7,8 @@
 
 export const CHANNEL_SEARCH_KEYS = [
   "agentSession",
+  // Legacy scope hint. Keep recognizing it so session navigation can remove
+  // stale URLs; channel surfaces now derive scope from the active channel.
   "agentSessionChannel",
   "autoSend",
   "channelManagement",

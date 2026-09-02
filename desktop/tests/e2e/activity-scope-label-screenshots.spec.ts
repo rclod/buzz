@@ -9,6 +9,7 @@ const AGENT_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
 const LONG_AGENT_NAME =
   "Observer Agent With An Exceptionally Long Display Name";
 const AGENTS_CHANNEL_ID = "94a444a4-c0a3-5966-ab05-530c6ddc2301"; // #agents
+const RANDOM_CHANNEL_ID = "4207c81d-22f5-506d-a06b-a1fe7aea8b09"; // #random
 
 // Open the activity pane via profile → "View activity" (same ingress the
 // observer-feed screenshot spec uses).
@@ -94,12 +95,13 @@ test.describe("activity panel scope label", () => {
     await panel.screenshot({ path: `${SHOTS}/01-channel-scoped.png` });
   });
 
-  test("unscoped pane shows All channels", async ({ page }) => {
+  test("restored pane stays scoped to the current channel", async ({
+    page,
+  }) => {
     // The agent lives in #random only. Restoring an agentSession URL on
-    // #agents (where the agent is not in the activity list) puts the pane in
-    // all-channels scope — the state that looked silently broken before the
-    // scope label existed. The app uses a hash router, so the deep link goes
-    // in the hash.
+    // #agents therefore has no in-memory source-channel hint, but the channel
+    // surface must still isolate activity to #agents. The app uses a hash
+    // router, so the deep link goes in the hash.
     await installMockBridge(page, {
       managedAgents: [
         {
@@ -124,6 +126,81 @@ test.describe("activity panel scope label", () => {
     );
     await expect(page.getByTestId("chat-title")).toHaveText("agents");
 
+    await page.waitForFunction(
+      () => typeof window.__BUZZ_E2E_SEED_OBSERVER_EVENTS__ === "function",
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            window.__BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?.({
+              channelName: "agents",
+            }) ?? false,
+        ),
+      )
+      .toBe(true);
+    await page.evaluate((pubkey) => {
+      window.__BUZZ_E2E_EMIT_MOCK_TYPING__?.({
+        channelName: "agents",
+        pubkey,
+      });
+    }, AGENT_PUBKEY);
+    await page.evaluate(
+      ({ agentPubkey, agentsChannelId, randomChannelId }) => {
+        const toolEvent = (
+          seq: number,
+          channelId: string,
+          sessionId: string,
+          title: string,
+        ) => ({
+          seq,
+          timestamp: new Date(Date.now() + seq).toISOString(),
+          kind: "acp_read",
+          agentIndex: 0,
+          channelId,
+          sessionId,
+          turnId: `${sessionId}-turn`,
+          payload: {
+            method: "session/update",
+            params: {
+              sessionId,
+              update: {
+                sessionUpdate: "tool_call",
+                toolCallId: `${sessionId}-tool`,
+                status: "completed",
+                title,
+                kind: "shell",
+                rawInput: { command: title },
+              },
+            },
+          },
+        });
+
+        window.__BUZZ_E2E_SEED_OBSERVER_EVENTS__?.({
+          agentPubkey,
+          events: [
+            toolEvent(
+              1,
+              randomChannelId,
+              "parent-session",
+              "Parent channel history",
+            ),
+            toolEvent(
+              2,
+              agentsChannelId,
+              "new-session",
+              "New channel activity",
+            ),
+          ],
+        });
+      },
+      {
+        agentPubkey: AGENT_PUBKEY,
+        agentsChannelId: AGENTS_CHANNEL_ID,
+        randomChannelId: RANDOM_CHANNEL_ID,
+      },
+    );
+
     const panel = page.getByTestId("agent-session-thread-panel");
     await expect(panel).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("agent-session-agent-name")).toHaveText(
@@ -136,9 +213,19 @@ test.describe("activity panel scope label", () => {
       await agentName.evaluate((element) => element.clientWidth),
     );
     const scope = page.getByTestId("agent-session-scope-label");
-    await expect(scope).toHaveText("Activity · All channels");
+    await expect(scope).toHaveText("Activity · #agents");
+    await expect(
+      panel.getByText("New channel activity", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      panel.getByText("Parent channel history", { exact: true }),
+    ).toHaveCount(0);
+    const composerActivity = page.getByTestId("bot-activity-composer-trigger");
+    await expect(composerActivity).toBeVisible();
+    await expect(composerActivity).toContainText("New channel activity");
+    await expect(page.getByTestId("message-typing-indicator")).toHaveCount(0);
     const recency = page.getByTestId("agent-session-recency-label");
-    await expect(recency).toHaveText("No updates yet");
+    await expect(recency).not.toHaveText("No updates yet");
     await expect(recency).toBeVisible();
 
     await page.setViewportSize({ width: 720, height: 700 });
@@ -150,7 +237,7 @@ test.describe("activity panel scope label", () => {
 
     await page.getByTestId("agent-session-settings-menu-trigger").click();
     await page.getByTestId("agent-session-toggle-raw-feed").click();
-    await expect(scope).toHaveText("Raw ACP activity · All channels");
+    await expect(scope).toHaveText("Raw ACP activity · #agents");
     await expect(recency).toBeVisible();
     expect(await recency.evaluate((element) => element.clientWidth)).toBe(
       recencyWidth,
@@ -158,6 +245,6 @@ test.describe("activity panel scope label", () => {
     await page.keyboard.press("Escape");
 
     await waitForAnimations(page);
-    await panel.screenshot({ path: `${SHOTS}/02-all-channels.png` });
+    await panel.screenshot({ path: `${SHOTS}/02-restored-channel-scoped.png` });
   });
 });

@@ -4,16 +4,12 @@ import { reportChannelBotTyping } from "@/features/agents/agentWorkingSignal";
 import type { TypingIndicatorEntry } from "@/features/messages/useChannelTyping";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import type {
-  Channel,
   ChannelMember,
   ManagedAgent,
   RelayAgent,
 } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
-import {
-  buildChannelAgentSessionCandidates,
-  getChannelAgentSessionAgents,
-} from "./useChannelAgentSessions";
+import { buildChannelAgentSessionCandidates } from "./useChannelAgentSessions";
 
 /**
  * Key of bot typing pubkeys that may mark the *channel* as working. Only
@@ -32,7 +28,6 @@ export function channelScopedBotTypingPubkeyKey(
 }
 
 export function useChannelActivityTyping({
-  activeChannel,
   activeChannelId,
   channelMembers,
   managedAgents,
@@ -40,7 +35,6 @@ export function useChannelActivityTyping({
   relayAgents,
   typingEntries,
 }: {
-  activeChannel: Channel | null;
   activeChannelId: string | null;
   channelMembers?: ChannelMember[];
   managedAgents: ManagedAgent[];
@@ -57,22 +51,10 @@ export function useChannelActivityTyping({
       }),
     [channelMembers, managedAgents, relayAgents],
   );
-  const channelAgentSessionAgents = React.useMemo(
-    () =>
-      getChannelAgentSessionAgents({
-        activeChannel,
-        activeChannelId,
-        agents: agentCandidates,
-        channelMembers,
-      }),
-    [activeChannel, activeChannelId, agentCandidates, channelMembers],
-  );
   const channelAgentPubkeys = React.useMemo(
     () =>
-      new Set(
-        channelAgentSessionAgents.map((agent) => normalizePubkey(agent.pubkey)),
-      ),
-    [channelAgentSessionAgents],
+      new Set(agentCandidates.map((agent) => normalizePubkey(agent.pubkey))),
+    [agentCandidates],
   );
   const threadTypingPubkeys = React.useMemo(
     () =>
@@ -123,7 +105,6 @@ export function useChannelActivityTyping({
   return {
     agentSessionCandidates: agentCandidates,
     botTypingEntries,
-    channelAgentSessionAgents,
     humanTypingPubkeys,
     threadTypingPubkeys,
   };
