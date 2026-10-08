@@ -12,6 +12,7 @@ import 'package:buzz/features/channels/reaction_row.dart';
 import 'package:buzz/features/channels/message_long_press_region.dart';
 import 'package:buzz/shared/read_state/read_state_provider.dart';
 import 'package:buzz/features/channels/thread_follows/thread_follows_provider.dart';
+import 'package:buzz/features/channels/thread_detail_target.dart';
 import 'package:buzz/features/channels/timeline_message.dart';
 import 'package:buzz/shared/reminders/reminder_service.dart';
 import 'package:buzz/shared/relay/relay.dart';
@@ -144,6 +145,7 @@ Future<void> _pumpSheet(
   bool nativePresentation = false,
   String? currentPubkey = 'self',
   bool listChannel = false,
+  ValueChanged<ThreadDetailTarget>? onOpenThread,
 }) async {
   Future<void>? presentation;
   await tester.pumpWidget(
@@ -165,6 +167,12 @@ Future<void> _pumpSheet(
       ],
       child: MaterialApp(
         theme: AppTheme.light(),
+        builder: onOpenThread == null
+            ? null
+            : (context, child) => ThreadDetailPaneScope(
+                onOpenThread: onOpenThread,
+                child: child!,
+              ),
         home: Scaffold(
           body: Consumer(
             builder: (context, ref, _) {
@@ -732,6 +740,48 @@ void main() {
     expect(find.text('Copy text'), findsNothing);
     debugDefaultTargetPlatformOverride = null;
   });
+
+  for (final native in [false, true]) {
+    testWidgets('Reply uses the tablet thread pane (native=$native)', (
+      tester,
+    ) async {
+      if (native) {
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          NativeMessagePresentation.channel,
+          (call) async => call.method == 'supportsMessage'
+              ? {'supported': true}
+              : {'action': 'reply'},
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            NativeMessagePresentation.channel,
+            null,
+          ),
+        );
+      }
+      final message = _message();
+      ThreadDetailTarget? selectedThread;
+      await _pumpSheet(
+        tester,
+        message: message,
+        prefs: await _mockPrefs(),
+        allMessages: [message],
+        anchorRect: native ? const Rect.fromLTWH(20, 200, 300, 80) : null,
+        nativePresentation: native,
+        onOpenThread: (target) => selectedThread = target,
+      );
+      if (!native) {
+        await tester.tap(find.text('Reply'));
+        await tester.pumpAndSettle();
+      }
+      expect(selectedThread?.threadHead, same(message));
+      expect(selectedThread?.channelId, _channelId);
+      expect(find.text('open'), findsOneWidget);
+      debugDefaultTargetPlatformOverride = null;
+    });
+  }
 
   testWidgets('the native menu uses channel catch-up without a profile', (
     tester,

@@ -66,17 +66,14 @@ Future<bool> _showNativeMessageActions({
     if (!message.isSystem) {
       if (allMessages != null) {
         action('reply', 'Reply', 'arrowshape.turn.up.left', () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => ThreadDetailPage(
-                threadHead: message,
-                allMessages: allMessages,
-                channelId: channelId,
-                currentPubkey: currentPubkey,
-                isMember: isMember,
-                isArchived: isArchived,
-              ),
-            ),
+          openThreadDetail(
+            context,
+            threadHead: message,
+            allMessages: allMessages,
+            channelId: channelId,
+            currentPubkey: currentPubkey,
+            isMember: isMember,
+            isArchived: isArchived,
           );
         });
       }
