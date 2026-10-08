@@ -7,6 +7,8 @@ const double _tabletThreePaneMinWidth = 900;
 class _TabletWorkspace extends StatelessWidget {
   const _TabletWorkspace({
     required this.settingsPageBuilder,
+    this.communityInvitePageBuilder,
+    this.communityAppearancePageBuilder,
     required this.hasUnreadInbox,
     required this.selectedDestination,
     required this.selectedChannel,
@@ -21,6 +23,8 @@ class _TabletWorkspace extends StatelessWidget {
   });
 
   final WidgetBuilder settingsPageBuilder;
+  final WidgetBuilder? communityInvitePageBuilder;
+  final WidgetBuilder? communityAppearancePageBuilder;
   final bool hasUnreadInbox;
   final int selectedDestination;
   final Channel? selectedChannel;
@@ -71,6 +75,8 @@ class _TabletWorkspace extends StatelessWidget {
               width: _tabletSidebarWidth,
               child: ChannelsPage(
                 settingsPageBuilder: settingsPageBuilder,
+                communityInvitePageBuilder: communityInvitePageBuilder,
+                communityAppearancePageBuilder: communityAppearancePageBuilder,
                 onSettingsTransitionProgress: (progress) {
                   if (settingsTransitionProgress.value != progress) {
                     settingsTransitionProgress.value = progress;

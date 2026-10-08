@@ -5,7 +5,7 @@ class _ChannelsBody extends StatelessWidget {
   final AsyncValue<List<Channel>> channelsAsync;
   final bool showError;
   final SessionStatus sessionStatus;
-  final bool showConnectionSkeleton;
+  final ValueChanged<bool> onReadyChanged;
   final String? currentPubkey;
   final double topSectionHeight;
   final bool usesPinnedGradient;
@@ -19,7 +19,7 @@ class _ChannelsBody extends StatelessWidget {
     required this.channelsAsync,
     required this.showError,
     required this.sessionStatus,
-    required this.showConnectionSkeleton,
+    required this.onReadyChanged,
     required this.currentPubkey,
     required this.topSectionHeight,
     required this.usesPinnedGradient,
@@ -33,8 +33,7 @@ class _ChannelsBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final barHeight = topSectionHeight;
     final loadedChannels = channels;
-    final loading =
-        showConnectionSkeleton || (loadedChannels == null && !showError);
+    final loading = loadedChannels == null && !showError;
     Widget buildContent({required double topInset}) =>
         showError && channelsAsync.hasError
         ? Padding(
@@ -85,12 +84,12 @@ class _ChannelsBody extends StatelessWidget {
           workspaceHeader!,
           Expanded(
             child: SkeletonReveal(
+              onReadyChanged: onReadyChanged,
               loading: loading,
               shimmerEnabled: sessionStatus != SessionStatus.disconnected,
               skeleton: _ChannelsSkeleton(
                 channels: loadedChannels,
                 topInset: 0,
-                status: sessionStatus,
               ),
               content: buildContent(topInset: 0),
             ),
@@ -100,12 +99,18 @@ class _ChannelsBody extends StatelessWidget {
     }
 
     return SkeletonReveal(
+      onReadyChanged: onReadyChanged,
       loading: loading,
+      loadingSemanticsKey: const Key('channels-connection-skeleton'),
+      loadingLabel: switch (sessionStatus) {
+        SessionStatus.connecting => 'Connecting',
+        SessionStatus.reconnecting => 'Reconnecting',
+        _ => 'Loading',
+      },
       shimmerEnabled: sessionStatus != SessionStatus.disconnected,
       skeleton: _ChannelsSkeleton(
         channels: loadedChannels,
         topInset: barHeight,
-        status: sessionStatus,
       ),
       content: buildContent(topInset: barHeight),
     );
@@ -143,10 +148,25 @@ class _SliverChannelsList extends HookConsumerWidget {
     final streamChannels = visibleChannels
         .where((channel) => channel.isStream)
         .toList();
-    final dmChannels = sortDmChannelsByDisplayLabel(
-      visibleChannels.where((channel) => channel.isDm),
-      currentPubkey: currentPubkey,
+    final unsortedDms = visibleChannels.where((channel) => channel.isDm);
+    // Rebuild only when the DM order changes, not for every profile fetch.
+    final dmOrder = ref.watch(
+      identityNameSourcesProvider.select(
+        (names) => [
+          for (final channel in sortDmChannelsByDisplayLabel(
+            unsortedDms,
+            currentPubkey: currentPubkey,
+            names: names,
+          ))
+            channel.id,
+        ].join('\u0000'),
+      ),
     );
+    final dmRank = {
+      for (final (index, id) in dmOrder.split('\u0000').indexed) id: index,
+    };
+    final dmChannels = unsortedDms.toList()
+      ..sort((a, b) => dmRank[a.id]!.compareTo(dmRank[b.id]!));
 
     final starredExpanded = useState(true);
     final channelsExpanded = useState(true);

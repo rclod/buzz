@@ -39,7 +39,7 @@ class _ThreadMessage extends HookConsumerWidget {
     final profile =
         ref.watch(userCacheProvider.select((cache) => cache[pk])) ??
         ref.read(userCacheProvider.notifier).get(pk);
-    final displayName = profile?.label ?? shortPubkey(message.pubkey);
+    final displayName = watchChannelIdentityLabel(ref, channelId, pk);
     final isAgent =
         ref.watch(agentMentionPubkeysProvider(channelId)).contains(pk) ||
         profile?.ownerPubkey != null;
@@ -73,6 +73,11 @@ class _ThreadMessage extends HookConsumerWidget {
       profileMentionNames: mentionNames,
       directoryDisplayNames: ref.watch(agentDirectoryDisplayNamesProvider),
       agentMentionPubkeys: agentMentionPubkeys,
+    );
+    final mentionLabels = watchChannelIdentityLabels(
+      ref,
+      channelId,
+      message.mentionPubkeys,
     );
 
     final selecting = ref.watch(messageTextSelectionIdProvider) == message.id;
@@ -162,8 +167,11 @@ class _ThreadMessage extends HookConsumerWidget {
                       children: [
                         if (showAuthor)
                           GestureDetector(
-                            onTap: () =>
-                                showUserProfileSheet(context, message.pubkey),
+                            onTap: () => showUserProfileSheet(
+                              context,
+                              message.pubkey,
+                              names: channelIdentityNamesProvider(channelId),
+                            ),
                             child: _Avatar(
                               profile: profile,
                               pubkey: message.pubkey,
@@ -204,6 +212,10 @@ class _ThreadMessage extends HookConsumerWidget {
                                                 showUserProfileSheet(
                                                   context,
                                                   message.pubkey,
+                                                  names:
+                                                      channelIdentityNamesProvider(
+                                                        channelId,
+                                                      ),
                                                 ),
                                             displayNameKey: ValueKey(
                                               'thread-message-author-${message.id}',
@@ -245,6 +257,7 @@ class _ThreadMessage extends HookConsumerWidget {
                                   content: message.content,
                                   selectable: selecting,
                                   mentionNames: resolvedMentionNames,
+                                  mentionLabels: mentionLabels,
                                   agentMentionPubkeys: agentMentionPubkeys,
                                   channelNames: channelNames,
                                   tags: message.tags,
@@ -292,7 +305,13 @@ class _ThreadMessage extends HookConsumerWidget {
                                     );
                                   },
                                   onMentionTap: (pubkey) =>
-                                      showUserProfileSheet(context, pubkey),
+                                      showUserProfileSheet(
+                                        context,
+                                        pubkey,
+                                        names: channelIdentityNamesProvider(
+                                          channelId,
+                                        ),
+                                      ),
                                 ),
                               ],
                             ),
@@ -308,6 +327,7 @@ class _ThreadMessage extends HookConsumerWidget {
                       ),
                       child: ReactionRow(
                         messageId: message.id,
+                        channelId: channelId,
                         reactions: message.reactions,
                         onToggle: (emoji) =>
                             toggleReaction(ref, message, emoji),

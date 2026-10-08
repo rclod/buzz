@@ -7,17 +7,20 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../shared/mentions/agent_identity_provider.dart';
+import '../../shared/relay/relay_closed_policy.dart';
 import '../../shared/theme/theme.dart';
+import '../../shared/widgets/sheet_action_section.dart';
 import '../../shared/widgets/avatar_image.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
 import '../../shared/widgets/frosted_app_bar.dart';
 import '../../shared/widgets/frosted_scaffold.dart';
+import '../../shared/widgets/load_error_view.dart';
 import '../../shared/widgets/modal_presentation.dart';
 import '../channels/compose_bar.dart';
 import '../channels/message_actions.dart';
+import '../channels/channel_identity_names_provider.dart';
 import '../channels/message_content.dart';
 import '../../shared/profile/user_cache_provider.dart';
-import '../../shared/utils/string_utils.dart';
 import '../../shared/profile/user_profile.dart';
 import '../profile/user_profile_sheet.dart';
 import 'forum_models.dart';
@@ -46,12 +49,25 @@ class ForumThreadPage extends HookConsumerWidget {
       forumThreadProvider((channelId: channelId, eventId: postEventId)),
     );
 
-    // Periodic refresh (every 10s, matching desktop).
+    // Periodic refresh (every 10s, matching desktop). A settled deadline
+    // pauses polling; reopening the thread is the explicit retry.
     useEffect(() {
+      final provider = forumThreadProvider((
+        channelId: channelId,
+        eventId: postEventId,
+      ));
+      // Only a deadline already settled when this surface mounts is a
+      // reopen; a first load that fails after mounting is not retried.
+      // Hooks run effects during build, so defer the invalidation past it.
+      if (isSettledRelayDeadline(ref.read(provider))) {
+        Future.microtask(() {
+          if (context.mounted) ref.invalidate(provider);
+        });
+      }
       final timer = Stream.periodic(const Duration(seconds: 10)).listen((_) {
-        ref.invalidate(
-          forumThreadProvider((channelId: channelId, eventId: postEventId)),
-        );
+        if (!isSettledRelayDeadline(ref.read(provider))) {
+          ref.invalidate(provider);
+        }
       });
       return timer.cancel;
     }, [channelId, postEventId]);
@@ -80,6 +96,8 @@ class ForumThreadPage extends HookConsumerWidget {
         ],
       ),
       body: threadAsync.when(
+        // A retry from an error shows loading, not the stale error and its Retry.
+        skipLoadingOnRefresh: !threadAsync.hasError,
         loading: () => Padding(
           padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
           child: const Center(
@@ -91,12 +109,10 @@ class ForumThreadPage extends HookConsumerWidget {
         ),
         error: (e, _) => Padding(
           padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
-          child: Center(
-            child: Text(
-              'Failed to load thread',
-              style: context.textTheme.bodyMedium?.copyWith(
-                color: context.colors.error,
-              ),
+          child: LoadErrorView(
+            message: 'Failed to load thread',
+            onRetry: () => ref.invalidate(
+              forumThreadProvider((channelId: channelId, eventId: postEventId)),
             ),
           ),
         ),
@@ -129,8 +145,7 @@ class ForumThreadPage extends HookConsumerWidget {
               Grid.gutter,
               Grid.xs,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            child: SheetActionSection(
               children: [
                 ListTile(
                   leading: const Icon(LucideIcons.copy),
@@ -343,7 +358,7 @@ class _OriginalPost extends ConsumerWidget {
     final profile =
         ref.watch(userCacheProvider.select((cache) => cache[pk])) ??
         ref.read(userCacheProvider.notifier).get(pk);
-    final displayName = profile?.label ?? shortPubkey(post.pubkey);
+    final displayName = watchChannelIdentityLabel(ref, post.channelId, pk);
 
     final userCache = ref.watch(userCacheProvider);
     final agentMentionPubkeys = agentPubkeysWithProfileOwners(
@@ -359,6 +374,11 @@ class _OriginalPost extends ConsumerWidget {
       directoryDisplayNames: ref.watch(agentDirectoryDisplayNamesProvider),
       agentMentionPubkeys: agentMentionPubkeys,
     );
+    final mentionLabels = watchChannelIdentityLabels(
+      ref,
+      post.channelId,
+      post.mentionPubkeys,
+    );
 
     final selecting = ref.watch(messageTextSelectionIdProvider) == post.eventId;
 
@@ -372,7 +392,11 @@ class _OriginalPost extends ConsumerWidget {
             Row(
               children: [
                 GestureDetector(
-                  onTap: () => showUserProfileSheet(context, post.pubkey),
+                  onTap: () => showUserProfileSheet(
+                    context,
+                    post.pubkey,
+                    names: channelIdentityNamesProvider(post.channelId),
+                  ),
                   child: _Avatar(
                     key: ValueKey('forum-original-avatar-${post.eventId}'),
                     profile: profile,
@@ -387,8 +411,11 @@ class _OriginalPost extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: GestureDetector(
-                          onTap: () =>
-                              showUserProfileSheet(context, post.pubkey),
+                          onTap: () => showUserProfileSheet(
+                            context,
+                            post.pubkey,
+                            names: channelIdentityNamesProvider(post.channelId),
+                          ),
                           child: Text(
                             displayName,
                             maxLines: 1,
@@ -422,6 +449,7 @@ class _OriginalPost extends ConsumerWidget {
             MessageContent(
               content: post.content,
               mentionNames: mentionNames,
+              mentionLabels: mentionLabels,
               agentMentionPubkeys: agentMentionPubkeys,
               tags: post.tags,
               baseStyle: messageBodyTextStyle.copyWith(
@@ -429,7 +457,11 @@ class _OriginalPost extends ConsumerWidget {
               ),
               onMentionTap: selecting
                   ? null
-                  : (pubkey) => showUserProfileSheet(context, pubkey),
+                  : (pubkey) => showUserProfileSheet(
+                      context,
+                      pubkey,
+                      names: channelIdentityNamesProvider(post.channelId),
+                    ),
               selectable: selecting,
             ),
           ],
@@ -500,7 +532,7 @@ class _ReplyRow extends ConsumerWidget {
     final profile =
         ref.watch(userCacheProvider.select((cache) => cache[pk])) ??
         ref.read(userCacheProvider.notifier).get(pk);
-    final displayName = profile?.label ?? shortPubkey(reply.pubkey);
+    final displayName = watchChannelIdentityLabel(ref, channelId, pk);
 
     final userCache = ref.watch(userCacheProvider);
     final agentMentionPubkeys = agentPubkeysWithProfileOwners(
@@ -515,6 +547,11 @@ class _ReplyRow extends ConsumerWidget {
       profileMentionNames: _buildMentionNames(reply.mentionPubkeys, userCache),
       directoryDisplayNames: ref.watch(agentDirectoryDisplayNamesProvider),
       agentMentionPubkeys: agentMentionPubkeys,
+    );
+    final mentionLabels = watchChannelIdentityLabels(
+      ref,
+      channelId,
+      reply.mentionPubkeys,
     );
 
     final selecting =
@@ -531,7 +568,11 @@ class _ReplyRow extends ConsumerWidget {
           Row(
             children: [
               GestureDetector(
-                onTap: () => showUserProfileSheet(context, reply.pubkey),
+                onTap: () => showUserProfileSheet(
+                  context,
+                  reply.pubkey,
+                  names: channelIdentityNamesProvider(channelId),
+                ),
                 child: _Avatar(
                   key: ValueKey('forum-reply-avatar-${reply.eventId}'),
                   profile: profile,
@@ -546,8 +587,11 @@ class _ReplyRow extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: GestureDetector(
-                        onTap: () =>
-                            showUserProfileSheet(context, reply.pubkey),
+                        onTap: () => showUserProfileSheet(
+                          context,
+                          reply.pubkey,
+                          names: channelIdentityNamesProvider(channelId),
+                        ),
                         child: Text(
                           displayName,
                           maxLines: 1,
@@ -595,6 +639,7 @@ class _ReplyRow extends ConsumerWidget {
             child: MessageContent(
               content: reply.content,
               mentionNames: mentionNames,
+              mentionLabels: mentionLabels,
               agentMentionPubkeys: agentMentionPubkeys,
               tags: reply.tags,
               baseStyle: messageBodyTextStyle.copyWith(
@@ -602,7 +647,11 @@ class _ReplyRow extends ConsumerWidget {
               ),
               onMentionTap: selecting
                   ? null
-                  : (pubkey) => showUserProfileSheet(context, pubkey),
+                  : (pubkey) => showUserProfileSheet(
+                      context,
+                      pubkey,
+                      names: channelIdentityNamesProvider(channelId),
+                    ),
               selectable: selecting,
             ),
           ),
@@ -629,8 +678,7 @@ class _ReplyRow extends ConsumerWidget {
               Grid.gutter,
               Grid.xs,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            child: SheetActionSection(
               children: [
                 ListTile(
                   leading: const Icon(LucideIcons.copy),
