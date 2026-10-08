@@ -77,28 +77,8 @@ class _ChannelsBody extends StatelessWidget {
             ),
           );
 
-    if (workspaceHeader != null) {
-      return Column(
-        children: [
-          SizedBox(height: barHeight),
-          workspaceHeader!,
-          Expanded(
-            child: SkeletonReveal(
-              onReadyChanged: onReadyChanged,
-              loading: loading,
-              shimmerEnabled: sessionStatus != SessionStatus.disconnected,
-              skeleton: _ChannelsSkeleton(
-                channels: loadedChannels,
-                topInset: 0,
-              ),
-              content: buildContent(topInset: 0),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return SkeletonReveal(
+    final topInset = workspaceHeader == null ? barHeight : 0.0;
+    final revealedContent = SkeletonReveal(
       onReadyChanged: onReadyChanged,
       loading: loading,
       loadingSemanticsKey: const Key('channels-connection-skeleton'),
@@ -108,11 +88,16 @@ class _ChannelsBody extends StatelessWidget {
         _ => 'Loading',
       },
       shimmerEnabled: sessionStatus != SessionStatus.disconnected,
-      skeleton: _ChannelsSkeleton(
-        channels: loadedChannels,
-        topInset: barHeight,
-      ),
-      content: buildContent(topInset: barHeight),
+      skeleton: _ChannelsSkeleton(channels: loadedChannels, topInset: topInset),
+      content: buildContent(topInset: topInset),
+    );
+    if (workspaceHeader == null) return revealedContent;
+    return Column(
+      children: [
+        SizedBox(height: barHeight),
+        workspaceHeader!,
+        Expanded(child: revealedContent),
+      ],
     );
   }
 }

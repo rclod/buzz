@@ -1036,6 +1036,34 @@ void main() {
     );
   });
 
+  for (final status in [SessionStatus.connecting, SessionStatus.reconnecting]) {
+    testWidgets('workspace announces $status while channels load', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        buildTestable(
+          overrides: [
+            channelsProvider.overrideWith(() => _LoadingNotifier()),
+            relaySessionProvider.overrideWith(
+              () => _ReconnectingRelaySession(initialStatus: status),
+            ),
+          ],
+          workspaceHeader: const Text('Workspace destinations'),
+        ),
+      );
+      await tester.pump();
+      expect(
+        tester
+            .widget<Semantics>(
+              find.byKey(const Key('channels-connection-skeleton')),
+            )
+            .properties
+            .label,
+        status == SessionStatus.connecting ? 'Connecting' : 'Reconnecting',
+      );
+    });
+  }
+
   testWidgets('opens the settings page supplied by the app layer', (
     tester,
   ) async {
