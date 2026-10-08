@@ -470,6 +470,14 @@ class ActivityPage extends HookConsumerWidget {
       );
     }
 
+    void changeFilter(InboxFilter nextFilter) {
+      filter.value = nextFilter;
+      selectedConversationId.value = null;
+      selectedItemTarget.value = null;
+      selectedItemForDetail.value = null;
+      selectedChannelForDetail.value = null;
+    }
+
     final inboxPane = FrostedScaffold(
       backgroundColor: context.colors.surface,
       appBar: FrostedAppBar(
@@ -484,7 +492,7 @@ class ActivityPage extends HookConsumerWidget {
                 IosNavigationAction(
                   label: entry.value,
                   selected: filter.value == entry.key,
-                  onPressed: () => filter.value = entry.key,
+                  onPressed: () => changeFilter(entry.key),
                 ),
             ],
           ),
@@ -521,13 +529,7 @@ class ActivityPage extends HookConsumerWidget {
             filter: filter.value,
             unreadOnly: unreadOnly.value,
             unreadCount: unreadVisibleCount,
-            onFilterChanged: (f) {
-              filter.value = f;
-              selectedConversationId.value = null;
-              selectedItemTarget.value = null;
-              selectedItemForDetail.value = null;
-              selectedChannelForDetail.value = null;
-            },
+            onFilterChanged: changeFilter,
             onUnreadOnlyChanged: (v) => unreadOnly.value = v,
             onMarkAllRead: () {
               for (final item in visibleItems) {

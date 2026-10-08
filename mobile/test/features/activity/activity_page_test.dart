@@ -882,6 +882,46 @@ void main() {
     },
   );
 
+  testWidgets('native filter clears an excluded retained split-view detail', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      await buildTestable(
+        splitView: true,
+        feed: HomeFeedResponse(
+          mentions: [testMention],
+          needsAction: const [],
+          activity: const [],
+          agentActivity: const [],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    FrostedAppBar activityBar() => tester
+        .widgetList<FrostedAppBar>(find.byType(FrostedAppBar))
+        .firstWhere((bar) => bar.nativeTitle == 'Activity');
+    final options = activityBar().nativeActions!.firstWhere(
+      (action) => action.label == 'Activity options',
+    );
+    options.children
+        .firstWhere((action) => action.label == 'Unread only')
+        .onPressed!();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('inbox-row-m1')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ChannelDetailPage), findsOneWidget);
+
+    final filters = activityBar().nativeActions!.firstWhere(
+      (action) => action.label == 'Filter activity',
+    );
+    filters.children
+        .firstWhere((action) => action.label == 'Threads')
+        .onPressed!();
+    await tester.pumpAndSettle();
+    expect(find.byType(ChannelDetailPage), findsNothing);
+    expect(find.text('Select an inbox item'), findsOneWidget);
+  });
+
   testWidgets('thread filter matches grouped thread replies', (tester) async {
     await tester.pumpWidget(await buildTestable());
     await tester.pumpAndSettle();
