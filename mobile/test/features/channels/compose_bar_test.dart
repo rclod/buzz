@@ -38,6 +38,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 part 'compose_bar_test/exact_mention_tests.dart';
 part 'compose_bar_test/durable_mention_tests.dart';
+part 'compose_bar_test/hardware_keyboard_tests.dart';
 
 final _pngBytes = Uint8List.fromList([
   0x89,
@@ -662,6 +663,7 @@ class _FakeChannelsNotifier extends ChannelsNotifier {
 void main() {
   exactMentionTests();
   durableMentionTests();
+  hardwareKeyboardTests();
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {

@@ -323,7 +323,7 @@ class _ComposeBarLayout extends HookWidget {
   }
 
   Widget _buildTextField(BuildContext context) {
-    return TextField(
+    final textField = TextField(
       controller: controller,
       focusNode: focusNode,
       keyboardType: TextInputType.multiline,
@@ -357,6 +357,46 @@ class _ComposeBarLayout extends HookWidget {
         isDense: true,
       ),
     );
+    if (defaultTargetPlatform != TargetPlatform.iOS) return textField;
+    // Handle physical keys before native text entry, without changing the
+    // software keyboard's Return action or taking focus from the editor.
+    return Focus(
+      canRequestFocus: false,
+      onKeyEvent: _handleHardwareReturn,
+      child: textField,
+    );
+  }
+
+  KeyEventResult _handleHardwareReturn(FocusNode node, KeyEvent event) {
+    final keyboard = HardwareKeyboard.instance;
+    final value = controller.value;
+    if ((event.logicalKey != LogicalKeyboardKey.enter &&
+            event.logicalKey != LogicalKeyboardKey.numpadEnter) ||
+        keyboard.isControlPressed ||
+        keyboard.isAltPressed ||
+        keyboard.isMetaPressed ||
+        (value.composing.isValid && !value.composing.isCollapsed)) {
+      return KeyEventResult.ignored;
+    }
+    if (keyboard.isShiftPressed) {
+      if ((event is KeyDownEvent || event is KeyRepeatEvent) &&
+          value.selection.isValid) {
+        controller.value = value
+            .replaced(value.selection, '\n')
+            .copyWith(
+              selection: TextSelection.collapsed(
+                offset: value.selection.start + 1,
+              ),
+            );
+      }
+    } else if (event is KeyDownEvent) {
+      // The send callback checks the live draft and pending operations;
+      // button state may still reflect the frame before the last keystroke.
+      onSend();
+    }
+    // Consume key-up and repeats too: a held Return must neither send the
+    // next draft nor fall through to native newline insertion.
+    return KeyEventResult.handled;
   }
 }
 
