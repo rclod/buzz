@@ -90,7 +90,7 @@ Future<List<NostrEvent>> _fetchChannelMemberships(
   void Function()? ensureCurrent,
   bool strong = false,
 }) => _fetchPaginatedChannelEvents(
-  session,
+  (filter) => session.queryRelay([filter]),
   kind: 39002,
   tags: {
     '#p': [pubkey],
@@ -104,11 +104,55 @@ Future<List<NostrEvent>> _fetchChannelDirectoryMetas(
   RelaySessionNotifier session, {
   int? since,
 }) => _fetchPaginatedChannelEvents(
-  session,
+  (filter) => session.queryRelay([filter]),
   kind: 39000,
   operation: 'Channel directory',
   since: since,
 );
+
+Future<List<NostrEvent>> _fetchJoinedChannelMetas(
+  RelaySessionNotifier session,
+  List<String> channelIds, {
+  required void Function() ensureCurrent,
+}) async {
+  final events = <NostrEvent>[];
+  for (
+    var start = 0;
+    start < channelIds.length;
+    start += _channelDirectoryPageSize
+  ) {
+    final ids = channelIds.sublist(
+      start,
+      min(start + _channelDirectoryPageSize, channelIds.length),
+    );
+    final remaining = ids.toSet();
+    Future<List<NostrEvent>> fetchPage(NostrFilter filter) async {
+      // Addressable metadata arrives newest first. Once every requested ID
+      // is present, older revisions cannot add a channel or a newer head.
+      if (remaining.isEmpty) return const [];
+      final page = await session.fetchHistory(filter);
+      remaining.removeAll(
+        page
+            .where((event) => event.kind == 39000)
+            .map((event) => event.getTagValue('d'))
+            .whereType<String>(),
+      );
+      return page;
+    }
+
+    events.addAll(
+      await _fetchPaginatedChannelEvents(
+        fetchPage,
+        kind: 39000,
+        tags: {'#d': ids},
+        operation: 'Joined channel metadata',
+        ensureCurrent: ensureCurrent,
+        failOnNoProgress: true,
+      ),
+    );
+  }
+  return events;
+}
 
 /// Thrown when a channel-list request is retired before it settles.
 ///
@@ -584,13 +628,14 @@ class _ChannelRefreshCoordinator {
 typedef _DirectoryRead = ({List<NostrEvent> metas, DateTime startedAt});
 
 Future<List<NostrEvent>> _fetchPaginatedChannelEvents(
-  RelaySessionNotifier session, {
+  Future<List<NostrEvent>> Function(NostrFilter filter) fetchPage, {
   required int kind,
   required String operation,
   Map<String, List<String>> tags = const {},
   void Function()? ensureCurrent,
   bool strong = false,
   int? since,
+  bool failOnNoProgress = false,
 }) async {
   final events = <NostrEvent>[];
   final seenEventIds = <String>{};
@@ -598,7 +643,7 @@ Future<List<NostrEvent>> _fetchPaginatedChannelEvents(
   String? beforeId;
   for (var pageIndex = 0; pageIndex < _maxChannelDirectoryPages; pageIndex++) {
     ensureCurrent?.call();
-    final page = await session.queryRelay([
+    final page = await fetchPage(
       NostrFilter(
         kinds: [kind],
         tags: tags,
@@ -612,7 +657,7 @@ Future<List<NostrEvent>> _fetchPaginatedChannelEvents(
           if (strong) 'consistency': 'strong',
         },
       ),
-    ]);
+    );
     ensureCurrent?.call();
     if (page.isEmpty) break;
     var madeProgress = false;
@@ -622,7 +667,12 @@ Future<List<NostrEvent>> _fetchPaginatedChannelEvents(
         madeProgress = true;
       }
     }
-    if (!madeProgress) break;
+    if (!madeProgress) {
+      if (failOnNoProgress) {
+        throw StateError('$operation pagination made no progress');
+      }
+      break;
+    }
 
     final last = page.last;
     until = last.createdAt;
