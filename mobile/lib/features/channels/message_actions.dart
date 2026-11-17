@@ -62,9 +62,54 @@ bool _selectMessageAction(BuildContext context) {
   return true;
 }
 
+/// The message or forum post whose text is selectable, if any.
+///
+/// One message selects at a time: a long press normally opens the action
+/// sheet, so the selecting message gives its long press to platform text
+/// selection until its Done button clears this.
+final messageTextSelectionIdProvider =
+    NotifierProvider<MessageTextSelection, String?>(MessageTextSelection.new);
+
+class MessageTextSelection extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void select(String id) => state = id;
+
+  void clear() => state = null;
+}
+
+/// Ends text selection for the message that is selecting.
+class MessageTextSelectionDoneButton extends ConsumerWidget {
+  const MessageTextSelectionDoneButton({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return TextButton(
+      key: const ValueKey('message-select-text-done'),
+      onPressed: () =>
+          ref.read(messageTextSelectionIdProvider.notifier).clear(),
+      style: TextButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(horizontal: Grid.xxs),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(
+        'Done',
+        style: context.textTheme.labelMedium?.copyWith(
+          color: context.colors.primary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
 /// Presents message reactions and grouped actions in the shared bottom sheet.
 /// Grouped rows can supply aggregate reactions and a toggle for all source events.
 /// Snapshot and preview callbacks are not used by the sheet presentation.
+/// [onSelectText] adds a Select text action that makes the message selectable.
 Future<void> showMessageActions({
   required BuildContext context,
   required WidgetRef ref,
@@ -84,6 +129,7 @@ Future<void> showMessageActions({
   VoidCallback? restoreComposerFocus,
   bool isArchived = false,
   EdgeInsets popoverSpotlightPadding = const EdgeInsets.all(Grid.xxs),
+  VoidCallback? onSelectText,
 }) async {
   if (!context.mounted) return;
   unawaited(HapticFeedback.mediumImpact());
@@ -164,6 +210,15 @@ Future<void> showMessageActions({
                             Clipboard.setData(data);
                           },
                         ),
+                        if (onSelectText != null)
+                          ListTile(
+                            leading: const Icon(BuzzIcons.cursorText),
+                            title: const Text('Select text'),
+                            onTap: () {
+                              if (!_selectMessageAction(sheetContext)) return;
+                              onSelectText();
+                            },
+                          ),
                         ListTile(
                           leading: const Icon(BuzzIcons.messageCircle),
                           title: const Text('Start Solo chat'),

@@ -165,6 +165,7 @@ Future<void> _pumpSheet(
   bool nativePresentation = false,
   String? currentPubkey = 'self',
   bool listChannel = false,
+  VoidCallback? onSelectText,
 }) async {
   Future<void>? presentation;
   await tester.pumpWidget(
@@ -205,6 +206,7 @@ Future<void> _pumpSheet(
                   allMessages: allMessages,
                   currentPubkey: currentPubkey,
                   isMember: true,
+                  onSelectText: onSelectText,
                 ),
                 child: const Text('open'),
               );
@@ -722,6 +724,32 @@ void main() {
   });
 
   group('showMessageActions', () {
+    testWidgets('offers Select text only when the caller can select', (
+      tester,
+    ) async {
+      await _pumpSheet(tester, message: _message(), prefs: await _mockPrefs());
+
+      expect(find.text('Select text'), findsNothing);
+    });
+
+    testWidgets('Select text closes the sheet and invokes onSelectText', (
+      tester,
+    ) async {
+      var selected = false;
+      await _pumpSheet(
+        tester,
+        message: _message(),
+        prefs: await _mockPrefs(),
+        onSelectText: () => selected = true,
+      );
+
+      await tester.tap(find.text('Select text'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Select text'), findsNothing);
+      expect(selected, isTrue);
+    });
+
     for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
       testWidgets('uses sectioned sheet on $platform even with a snapshot', (
         tester,

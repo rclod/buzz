@@ -42,6 +42,7 @@ class _ThreadMessage extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final startsThreads = ref.watch(channelStartsThreadsProvider(channelId));
     final messageSnapshotKey = useMemoized(GlobalKey.new, const []);
+    final selecting = ref.watch(messageTextSelectionIdProvider) == message.id;
     final swipeContentKey = useMemoized(GlobalKey.new, const []);
     final mediaOffset = useMessageMediaOffset(message.content, message.tags);
     final pk = message.pubkey.toLowerCase();
@@ -113,6 +114,9 @@ class _ThreadMessage extends HookConsumerWidget {
         onPopoverDismissed: () => details.setSourceHidden(false),
         composerFocusNode: composerFocusNode,
         restoreComposerFocus: restoreComposerFocus,
+        onSelectText: () => ref
+            .read(messageTextSelectionIdProvider.notifier)
+            .select(message.id),
       );
     }
 
@@ -167,6 +171,8 @@ class _ThreadMessage extends HookConsumerWidget {
               borderRadius: BorderRadius.circular(Radii.md),
               highlightColor: context.colors.primary.withValues(alpha: 0.1),
               snapshotKey: messageSnapshotKey,
+              // A selecting message gives its long press to text selection.
+              enabled: !selecting,
               child: Padding(
                 padding: EdgeInsets.only(
                   bottom: endsDay
@@ -306,8 +312,19 @@ class _ThreadMessage extends HookConsumerWidget {
                                                 ),
                                               ),
                                             ),
+                                            if (selecting) ...[
+                                              const SizedBox(width: Grid.half),
+                                              const MessageTextSelectionDoneButton(),
+                                            ],
                                           ],
                                         ),
+                                      )
+                                    else if (selecting)
+                                      const Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: Grid.xs,
+                                        ),
+                                        child: MessageTextSelectionDoneButton(),
                                       ),
                                     MessageContent(
                                       key: swipeContentKey,
@@ -325,6 +342,7 @@ class _ThreadMessage extends HookConsumerWidget {
                                       bubbleStart: showAuthor,
                                       ownMessage: ownMessage,
                                       trimTrailingSpacing: true,
+                                      selectable: selecting,
                                       mentionNames: resolvedMentionNames,
                                       mentionLabels: mentionLabels,
                                       agentMentionPubkeys: agentMentionPubkeys,

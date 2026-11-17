@@ -130,6 +130,9 @@ abstract final class BuzzIcons {
   /// Tabler `copy`.
   static const copy = IconData(0xea7a, fontFamily: 'BuzzTabler');
 
+  /// Tabler `cursor-text`.
+  static const cursorText = IconData(0xee6d, fontFamily: 'BuzzTabler');
+
   /// Tabler `download`.
   static const download = IconData(0xea96, fontFamily: 'BuzzTabler');
 

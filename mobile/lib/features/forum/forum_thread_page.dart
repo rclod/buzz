@@ -18,6 +18,7 @@ import '../../shared/widgets/load_error_view.dart';
 import '../../shared/widgets/modal_presentation.dart';
 import '../channels/compose_bar.dart';
 import '../channels/channel_identity_names_provider.dart';
+import '../channels/message_actions.dart';
 import '../channels/message_content.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/profile/user_profile.dart';
@@ -154,6 +155,7 @@ class ForumThreadPage extends HookConsumerWidget {
                     Clipboard.setData(ClipboardData(text: thread.post.content));
                   },
                 ),
+                _selectTextTile(sheetContext, ref, thread.post.eventId),
                 ListTile(
                   leading: Icon(
                     BuzzIcons.trash2,
@@ -369,84 +371,138 @@ class _OriginalPost extends ConsumerWidget {
       post.channelId,
       post.mentionPubkeys,
     );
+    final selecting = ref.watch(messageTextSelectionIdProvider) == post.eventId;
 
-    return Padding(
-      padding: const EdgeInsets.all(Grid.xs),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              GestureDetector(
-                onTap: () => showUserProfileSheet(
-                  context,
-                  post.pubkey,
-                  names: channelIdentityNamesProvider(post.channelId),
+    return GestureDetector(
+      onLongPress: selecting ? null : () => _showActions(context, ref),
+      child: Padding(
+        padding: const EdgeInsets.all(Grid.xs),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: () => showUserProfileSheet(
+                    context,
+                    post.pubkey,
+                    names: channelIdentityNamesProvider(post.channelId),
+                  ),
+                  child: _Avatar(
+                    key: ValueKey('forum-original-avatar-${post.eventId}'),
+                    profile: profile,
+                    pubkey: post.pubkey,
+                    radius: 16,
+                    isAgent: agentMentionPubkeys.contains(pk),
+                  ),
                 ),
-                child: _Avatar(
-                  key: ValueKey('forum-original-avatar-${post.eventId}'),
-                  profile: profile,
-                  pubkey: post.pubkey,
-                  radius: 16,
-                  isAgent: agentMentionPubkeys.contains(pk),
-                ),
-              ),
-              const SizedBox(width: Grid.xxs),
-              Expanded(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => showUserProfileSheet(
-                          context,
-                          post.pubkey,
-                          names: channelIdentityNamesProvider(post.channelId),
+                const SizedBox(width: Grid.xxs),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => showUserProfileSheet(
+                            context,
+                            post.pubkey,
+                            names: channelIdentityNamesProvider(post.channelId),
+                          ),
+                          child: Text(
+                            displayName,
+                            maxLines: 1,
+                            style: messageUsernameTextStyle,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
+                      ),
+                      const SizedBox(width: Grid.xxs),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: Grid.xxl),
                         child: Text(
-                          displayName,
+                          formatRelativeTime(post.createdAt),
                           maxLines: 1,
-                          style: messageUsernameTextStyle,
                           overflow: TextOverflow.ellipsis,
+                          style: messageTimestampTextStyle.copyWith(
+                            color: context.colors.onSurfaceVariant,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: Grid.xxs),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: Grid.xxl),
-                      child: Text(
-                        formatRelativeTime(post.createdAt),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: messageTimestampTextStyle.copyWith(
-                          color: context.colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ],
+                      if (selecting) ...[
+                        const SizedBox(width: Grid.half),
+                        const MessageTextSelectionDoneButton(),
+                      ],
+                    ],
+                  ),
                 ),
+              ],
+            ),
+            const SizedBox(height: Grid.xxs),
+            MessageContent(
+              content: post.content,
+              selectable: selecting,
+              mentionNames: mentionNames,
+              mentionLabels: mentionLabels,
+              agentMentionPubkeys: agentMentionPubkeys,
+              tags: post.tags,
+              baseStyle: messageBodyTextStyle.copyWith(
+                color: context.colors.onSurface,
               ),
-            ],
-          ),
-          const SizedBox(height: Grid.xxs),
-          MessageContent(
-            content: post.content,
-            mentionNames: mentionNames,
-            mentionLabels: mentionLabels,
-            agentMentionPubkeys: agentMentionPubkeys,
-            tags: post.tags,
-            baseStyle: messageBodyTextStyle.copyWith(
-              color: context.colors.onSurface,
+              onMentionTap: (pubkey) => showUserProfileSheet(
+                context,
+                pubkey,
+                names: channelIdentityNamesProvider(post.channelId),
+              ),
             ),
-            onMentionTap: (pubkey) => showUserProfileSheet(
-              context,
-              pubkey,
-              names: channelIdentityNamesProvider(post.channelId),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+
+  void _showActions(BuildContext context, WidgetRef ref) {
+    showBuzzModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: IconTheme.merge(
+          data: const IconThemeData(size: 22),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Grid.gutter,
+              0,
+              Grid.gutter,
+              Grid.xs,
+            ),
+            child: SheetActionSection(
+              children: [
+                ListTile(
+                  leading: const Icon(BuzzIcons.copy),
+                  title: const Text('Copy text'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    Clipboard.setData(ClipboardData(text: post.content));
+                  },
+                ),
+                _selectTextTile(sheetContext, ref, post.eventId),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Closes [sheetContext] and makes the post or reply [id] selectable.
+ListTile _selectTextTile(BuildContext sheetContext, WidgetRef ref, String id) {
+  return ListTile(
+    leading: const Icon(BuzzIcons.cursorText),
+    title: const Text('Select text'),
+    onTap: () {
+      Navigator.of(sheetContext).pop();
+      ref.read(messageTextSelectionIdProvider.notifier).select(id);
+    },
+  );
 }
 
 class _ReplyRow extends ConsumerWidget {
@@ -489,6 +545,8 @@ class _ReplyRow extends ConsumerWidget {
       channelId,
       reply.mentionPubkeys,
     );
+    final selecting =
+        ref.watch(messageTextSelectionIdProvider) == reply.eventId;
 
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -548,26 +606,30 @@ class _ReplyRow extends ConsumerWidget {
                   ],
                 ),
               ),
-              SizedBox(
-                width: 28,
-                height: 28,
-                child: IconButton(
-                  onPressed: () => _showActions(context, ref),
-                  icon: Icon(
-                    BuzzIcons.ellipsis,
-                    size: 16,
-                    color: context.colors.onSurfaceVariant,
+              if (selecting)
+                const MessageTextSelectionDoneButton()
+              else
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: IconButton(
+                    onPressed: () => _showActions(context, ref),
+                    icon: Icon(
+                      BuzzIcons.ellipsis,
+                      size: 16,
+                      color: context.colors.onSurfaceVariant,
+                    ),
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
                   ),
-                  padding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
                 ),
-              ),
             ],
           ),
           Padding(
             padding: const EdgeInsets.only(left: 32, top: Grid.half),
             child: MessageContent(
               content: reply.content,
+              selectable: selecting,
               mentionNames: mentionNames,
               mentionLabels: mentionLabels,
               agentMentionPubkeys: agentMentionPubkeys,
@@ -615,6 +677,7 @@ class _ReplyRow extends ConsumerWidget {
                     Clipboard.setData(ClipboardData(text: reply.content));
                   },
                 ),
+                _selectTextTile(sheetContext, ref, reply.eventId),
                 if (isOwn)
                   ListTile(
                     leading: Icon(

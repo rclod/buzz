@@ -59,6 +59,10 @@ class MessageLongPressInkWell extends StatelessWidget {
   /// The key's current context must resolve to a boundary covering the message
   /// content. When omitted, this widget inserts and owns that boundary.
   final GlobalKey? snapshotKey;
+
+  /// When false, the long press is not observed, so platform text selection
+  /// inside [child] receives it. Taps still reach [onTap].
+  final bool enabled;
   final Widget child;
 
   const MessageLongPressInkWell({
@@ -69,11 +73,20 @@ class MessageLongPressInkWell extends StatelessWidget {
     this.borderRadius,
     this.highlightColor,
     this.snapshotKey,
+    this.enabled = true,
     required this.child,
   }) : assert(onLongPress != null || onLongPressDetails != null);
 
   @override
   Widget build(BuildContext context) {
+    if (!enabled) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: borderRadius,
+        highlightColor: highlightColor,
+        child: child,
+      );
+    }
     return _MessageLongPressRegion(
       onTap: onTap,
       onLongPress: onLongPress,

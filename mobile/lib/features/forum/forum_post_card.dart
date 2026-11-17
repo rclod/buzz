@@ -10,6 +10,7 @@ import '../../shared/widgets/sheet_action_section.dart';
 import '../../shared/widgets/avatar_image.dart';
 import '../../shared/widgets/modal_presentation.dart';
 import '../channels/channel_identity_names_provider.dart';
+import '../channels/message_actions.dart';
 import '../channels/message_content.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../profile/user_profile_sheet.dart';
@@ -99,10 +100,11 @@ class ForumPostCard extends HookConsumerWidget {
         ? '${post.content.substring(0, 200)}...'
         : post.content;
     final summary = post.threadSummary;
+    final selecting = ref.watch(messageTextSelectionIdProvider) == post.eventId;
 
     return GestureDetector(
-      onTap: onTap,
-      onLongPress: () => _showActions(context),
+      onTap: selecting ? null : onTap,
+      onLongPress: selecting ? null : () => _showActions(context, ref),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(Grid.twelve),
@@ -162,20 +164,23 @@ class ForumPostCard extends HookConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: Grid.half),
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: IconButton(
-                    onPressed: () => _showActions(context),
-                    icon: Icon(
-                      BuzzIcons.ellipsis,
-                      size: 16,
-                      color: context.colors.onSurfaceVariant,
+                if (selecting)
+                  const MessageTextSelectionDoneButton()
+                else
+                  SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: IconButton(
+                      onPressed: () => _showActions(context, ref),
+                      icon: Icon(
+                        BuzzIcons.ellipsis,
+                        size: 16,
+                        color: context.colors.onSurfaceVariant,
+                      ),
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
                     ),
-                    padding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
                   ),
-                ),
               ],
             ),
             const SizedBox(height: Grid.xxs),
@@ -194,10 +199,12 @@ class ForumPostCard extends HookConsumerWidget {
                 // non-scrolling viewport clips it at the cap instead of
                 // overflowing.
                 child: IgnorePointer(
+                  ignoring: !selecting,
                   child: SingleChildScrollView(
                     physics: const NeverScrollableScrollPhysics(),
                     child: MessageContent(
                       content: preview,
+                      selectable: selecting,
                       mentionNames: mentionNames,
                       mentionLabels: mentionLabels,
                       agentMentionPubkeys: agentMentionPubkeys,
@@ -255,7 +262,7 @@ class ForumPostCard extends HookConsumerWidget {
     );
   }
 
-  void _showActions(BuildContext context) {
+  void _showActions(BuildContext context, WidgetRef ref) {
     final isOwn =
         currentPubkey != null &&
         post.pubkey.toLowerCase() == currentPubkey!.toLowerCase();
@@ -281,6 +288,16 @@ class ForumPostCard extends HookConsumerWidget {
                   onTap: () {
                     Navigator.of(sheetContext).pop();
                     Clipboard.setData(ClipboardData(text: post.content));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(BuzzIcons.cursorText),
+                  title: const Text('Select text'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    ref
+                        .read(messageTextSelectionIdProvider.notifier)
+                        .select(post.eventId);
                   },
                 ),
                 if (isOwn && onDelete != null)

@@ -130,6 +130,10 @@ class MessageContent extends HookConsumerWidget {
   /// Lets an adjacent day divider own spacing after the final text segment.
   final bool trimTrailingSpacing;
 
+  /// Wraps the text in a [SelectionArea] so a substring can be highlighted
+  /// and copied with the platform selection menu.
+  final bool selectable;
+
   /// Marks the final message in a sender run for rounded corners and dots.
   final bool bubbleEnd;
 
@@ -207,6 +211,7 @@ class MessageContent extends HookConsumerWidget {
     this.additionalTextWidth = 0,
     this.ownMessage = false,
     this.trimTrailingSpacing = false,
+    this.selectable = false,
     this.bubbleEnd = true,
     this.bubbleStart = true,
     this.hasReactions = false,
@@ -574,10 +579,16 @@ class MessageContent extends HookConsumerWidget {
             ],
           )
         : renderBody(finalContent, last: true);
+    final body = selectable
+        ? SelectionArea(
+            key: const ValueKey('message-content-selection-area'),
+            child: markdown,
+          )
+        : markdown;
     if (trailingGallery == null) {
       return edited && !editedInBody
-          ? withEditedMarkerBelow(markdown, end: ownMessage)
-          : markdown;
+          ? withEditedMarkerBelow(body, end: ownMessage)
+          : body;
     }
 
     return Column(
@@ -597,7 +608,7 @@ class MessageContent extends HookConsumerWidget {
               ),
             ),
           ),
-        if (trailingGallery.content.trim().isNotEmpty) markdown,
+        if (trailingGallery.content.trim().isNotEmpty) body,
         MessageReplyDragTarget(
           child: MessageAttachmentCorners(
             borderRadius: _attachmentCorners(

@@ -381,6 +381,28 @@ void main() {
   });
 
   group('ForumPostCard', () {
+    testWidgets('Select text makes the post body selectable until Done', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_buildPostCard(post: _makePost()));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SelectionArea), findsNothing);
+
+      await tester.longPress(find.byType(ForumPostCard));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Select text'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SelectionArea), findsOneWidget);
+      expect(find.text('Done'), findsOneWidget);
+
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SelectionArea), findsNothing);
+    });
+
     testWidgets('renders author name and content', (tester) async {
       await tester.pumpWidget(
         _buildPostCard(

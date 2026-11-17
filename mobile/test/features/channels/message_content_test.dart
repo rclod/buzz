@@ -1318,6 +1318,31 @@ void main() {
         expect(_hasItalicSpan(tester, 'italic'), isTrue);
       });
 
+      testWidgets('does not wrap markdown in a SelectionArea by default', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          _testable(const MessageContent(content: 'hello world')),
+        );
+
+        expect(find.byType(SelectionArea), findsNothing);
+      });
+
+      testWidgets('selectable wraps markdown in a SelectionArea', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          _testable(
+            const MessageContent(content: 'hello world', selectable: true),
+          ),
+        );
+
+        expect(
+          find.byKey(const ValueKey('message-content-selection-area')),
+          findsOneWidget,
+        );
+      });
+
       testWidgets('renders composer-style underscore emphasis', (tester) async {
         await tester.pumpWidget(
           _testable(
